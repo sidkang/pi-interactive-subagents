@@ -2,7 +2,7 @@
  * Integration test harness for pi-interactive-subagents.
  *
  * Provides utilities to:
- * - Detect available mux backends (cmux, tmux, zellij)
+ * - Detect available mux backends (cmux, tmux, zellij, kitty)
  * - Create isolated test environments with test agent definitions
  * - Start real pi sessions in mux surfaces
  * - Poll for file creation and screen output
@@ -89,7 +89,7 @@ export function getAvailableBackends(): MuxBackend[] {
   const backends: MuxBackend[] = [];
   const orig = process.env.PI_SUBAGENT_MUX;
 
-  for (const backend of ["cmux", "tmux", "zellij"] as MuxBackend[]) {
+  for (const backend of ["cmux", "tmux", "zellij", "kitty"] as MuxBackend[]) {
     process.env.PI_SUBAGENT_MUX = backend;
     try {
       if (getMuxBackend() === backend) backends.push(backend);
@@ -191,11 +191,37 @@ export interface TestEnv {
   tempFiles: string[];
 }
 
+const activeTestEnvs = new Set<TestEnv>();
+let cleanupHandlersInstalled = false;
+
+function cleanupActiveTestEnvs(): void {
+  for (const env of [...activeTestEnvs]) {
+    cleanupTestEnv(env);
+  }
+}
+
+function installCleanupHandlers(): void {
+  if (cleanupHandlersInstalled) return;
+  cleanupHandlersInstalled = true;
+
+  process.once("exit", cleanupActiveTestEnvs);
+  process.once("SIGINT", () => {
+    cleanupActiveTestEnvs();
+    process.exit(130);
+  });
+  process.once("SIGTERM", () => {
+    cleanupActiveTestEnvs();
+    process.exit(143);
+  });
+}
+
 /**
  * Create an isolated test environment with test agent definitions.
  * The temp dir has `.pi/agents/` containing copies of all test agents.
  */
 export function createTestEnv(backend: MuxBackend): TestEnv {
+  installCleanupHandlers();
+
   const dir = mkdtempSync(join(tmpdir(), "pi-integ-"));
   const agentsDir = join(dir, ".pi", "agents");
   mkdirSync(agentsDir, { recursive: true });
@@ -209,26 +235,34 @@ export function createTestEnv(backend: MuxBackend): TestEnv {
     }
   }
 
-  return { dir, backend, surfaces: [], tempFiles: [] };
+  const env = { dir, backend, surfaces: [], tempFiles: [] };
+  activeTestEnvs.add(env);
+  return env;
 }
 
 /**
  * Clean up all resources created during the test.
  */
 export function cleanupTestEnv(env: TestEnv): void {
-  for (const surface of env.surfaces) {
-    try {
-      closeSurface(surface);
-    } catch {}
-  }
-  for (const file of env.tempFiles) {
-    try {
-      unlinkSync(file);
-    } catch {}
-  }
+  const prevMux = setBackend(env.backend);
   try {
-    rmSync(env.dir, { recursive: true, force: true });
-  } catch {}
+    for (const surface of env.surfaces) {
+      try {
+        closeSurface(surface);
+      } catch {}
+    }
+    for (const file of env.tempFiles) {
+      try {
+        unlinkSync(file);
+      } catch {}
+    }
+    try {
+      rmSync(env.dir, { recursive: true, force: true });
+    } catch {}
+  } finally {
+    activeTestEnvs.delete(env);
+    restoreBackend(prevMux);
+  }
 }
 
 /**

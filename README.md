@@ -26,7 +26,7 @@ subagent({ name: "Scout: DB", agent: "scout", task: "Map database schema" });
 ## Install
 
 ```bash
-pi install git:github.com/HazAT/pi-interactive-subagents
+pi install git:github.com/sidkang/pi-interactive-subagents
 ```
 
 Supported multiplexers:
@@ -35,6 +35,7 @@ Supported multiplexers:
 - [tmux](https://github.com/tmux/tmux)
 - [zellij](https://zellij.dev)
 - [WezTerm](https://wezfurlong.org/wezterm/) (terminal emulator with built-in multiplexing)
+- [Kitty](https://sw.kovidgoyal.net/kitty/) (terminal emulator with remote control enabled)
 
 Start pi inside one of them:
 
@@ -46,9 +47,11 @@ tmux new -A -s pi 'pi'
 zellij --session pi   # then run: pi
 # or
 # just run pi inside WezTerm — no wrapper needed
+# or
+# run pi inside Kitty with allow_remote_control yes (or KITTY_LISTEN_ON configured)
 ```
 
-Optional: set `PI_SUBAGENT_MUX=cmux|tmux|zellij|wezterm` to force a specific backend.
+Optional: set `PI_SUBAGENT_MUX=cmux|tmux|zellij|wezterm|kitty` to force a specific backend.
 
 If your shell startup is slow and subagent commands sometimes get dropped before the prompt is ready, set `PI_SUBAGENT_SHELL_READY_DELAY_MS` to a higher value (defaults to `500`):
 
@@ -472,6 +475,7 @@ Every sub-agent session displays a compact tools widget showing available and de
   - [tmux](https://github.com/tmux/tmux)
   - [zellij](https://zellij.dev)
   - [WezTerm](https://wezfurlong.org/wezterm/)
+  - [Kitty](https://sw.kovidgoyal.net/kitty/) with remote control enabled (`allow_remote_control yes`; `listen_on unix:/tmp/kitty-$UID.sock` is recommended for reliable screen reads)
 
 ```bash
 cmux pi
@@ -481,12 +485,16 @@ tmux new -A -s pi 'pi'
 zellij --session pi   # then run: pi
 # or
 # just run pi inside WezTerm
+# or
+# just run pi inside Kitty after enabling remote control
 ```
+
+For Kitty, `allow_remote_control yes` is required. For the most reliable crash detection and screen reads, also set `listen_on unix:/tmp/kitty-$UID.sock` in `kitty.conf` so Pi can use Kitty's socket instead of terminal escape-sequence replies.
 
 Optional backend override:
 
 ```bash
-export PI_SUBAGENT_MUX=cmux   # or tmux, zellij, wezterm
+export PI_SUBAGENT_MUX=cmux   # or tmux, zellij, wezterm, kitty
 ```
 
 ---

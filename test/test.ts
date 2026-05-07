@@ -21,6 +21,7 @@ import {
   shellEscape,
   isCmuxAvailable,
   isWezTermAvailable,
+  isKittyAvailable,
   parseCmuxFocusedSnapshot,
   parseCmuxFocusedSnapshotFromJson,
   parseCmuxJson,
@@ -2372,6 +2373,13 @@ describe("cmux.ts", () => {
   describe("isWezTermAvailable", () => {
     it("returns boolean based on WEZTERM_UNIX_SOCKET", () => {
       const result = isWezTermAvailable();
+      assert.equal(typeof result, "boolean");
+    });
+  });
+
+  describe("isKittyAvailable", () => {
+    it("returns boolean based on KITTY_WINDOW_ID and remote control", () => {
+      const result = isKittyAvailable();
       assert.equal(typeof result, "boolean");
     });
   });

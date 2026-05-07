@@ -1178,7 +1178,6 @@ async function launchSubagent(
   const cdPrefix = effectiveCwd ? `cd ${shellEscape(effectiveCwd)} && ` : "";
 
   const piCommand = cdPrefix + envPrefix + parts.join(" ");
-  const command = `${piCommand}; echo '__SUBAGENT_DONE_'$?'__'`;
   const launchScriptName = `${(params.name || "subagent")
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
@@ -1186,6 +1185,8 @@ async function launchSubagent(
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "") || "subagent"}-${id}.sh`;
   const launchScriptFile = join(artifactDir, "subagent-scripts", launchScriptName);
+  const sentinelFile = `${launchScriptFile}.done`;
+  const command = `${piCommand}; _PI_EXIT=$?; echo $_PI_EXIT > ${shellEscape(sentinelFile)} 2>/dev/null; echo '__SUBAGENT_DONE_'$_PI_EXIT'__'`;
   sendLongCommand(surface, command, {
     scriptPath: launchScriptFile,
     scriptPreamble: [
@@ -1206,6 +1207,7 @@ async function launchSubagent(
     sessionFile: subagentSessionFile,
     launchScriptFile,
     activityFile,
+    sentinelFile,
     interactive: effectiveInteractive,
     statusState: createStatusState({
       source: "pi",
