@@ -64,7 +64,7 @@ for (const backend of backends) {
     });
 
     it("keeps focus on the active surface while creating and targeting subagent surfaces", async () => {
-      if (backend === "zellij" || backend === "kitty") return;
+      if (backend === "zellij") return;
 
       const anchor = createTrackedSurfaceSplit(env, "focus-anchor", "right");
       await sleep(1000);

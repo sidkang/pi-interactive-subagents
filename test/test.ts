@@ -22,11 +22,14 @@ import {
   isCmuxAvailable,
   isWezTermAvailable,
   isKittyAvailable,
+  buildKittyLaunchArgs,
   parseCmuxFocusedSnapshot,
   parseCmuxFocusedSnapshotFromJson,
   parseCmuxJson,
   parseCmuxPaneRefForSurface,
   parseCmuxPaneRefForSurfaceFromJson,
+  parseKittyFocusedWindowId,
+  parseKittyFocusedWindowIdFromJson,
   canSplitZellijPane,
   predictZellijSplitDirection,
   selectZellijPlacement,
@@ -2374,6 +2377,98 @@ describe("cmux.ts", () => {
     it("returns boolean based on WEZTERM_UNIX_SOCKET", () => {
       const result = isWezTermAvailable();
       assert.equal(typeof result, "boolean");
+    });
+  });
+
+  describe("kitty helpers", () => {
+    it("builds launch args that clone the source window cwd for ssh-kitten", () => {
+      assert.deepEqual(buildKittyLaunchArgs("worker", "/local/project", "50", { cloneSourceCwd: true }), [
+        "--match",
+        "window_id:50",
+        "--source-window",
+        "id:50",
+        "--type=window",
+        "--dont-take-focus",
+        "--cwd",
+        "current",
+        "--title",
+        "worker",
+      ]);
+    });
+
+    it("uses a literal cwd for local kitty windows", () => {
+      assert.deepEqual(buildKittyLaunchArgs("worker", "/local/project", "50"), [
+        "--match",
+        "window_id:50",
+        "--source-window",
+        "id:50",
+        "--type=window",
+        "--dont-take-focus",
+        "--cwd",
+        "/local/project",
+        "--title",
+        "worker",
+      ]);
+    });
+
+    it("falls back to a literal cwd when no source window is known", () => {
+      assert.deepEqual(buildKittyLaunchArgs("worker", "/local/project"), [
+        "--type=window",
+        "--dont-take-focus",
+        "--cwd",
+        "/local/project",
+        "--title",
+        "worker",
+      ]);
+    });
+
+    it("parses the focused kitty window id", () => {
+      assert.equal(
+        parseKittyFocusedWindowId([
+          {
+            is_focused: true,
+            tabs: [
+              {
+                is_focused: true,
+                windows: [
+                  { id: 10, is_focused: false },
+                  { id: 11, is_focused: true },
+                ],
+              },
+            ],
+          },
+        ]),
+        "11",
+      );
+    });
+
+    it("ignores last-focused windows from inactive kitty tabs", () => {
+      assert.equal(
+        parseKittyFocusedWindowId([
+          {
+            is_focused: true,
+            tabs: [
+              {
+                is_active: false,
+                is_focused: false,
+                windows: [{ id: 10, is_focused: true, is_active: true }],
+              },
+              {
+                is_active: true,
+                is_focused: true,
+                windows: [{ id: 11, is_focused: true, is_active: true }],
+              },
+            ],
+          },
+        ]),
+        "11",
+      );
+    });
+
+    it("returns null for malformed kitty focus data", () => {
+      assert.equal(parseKittyFocusedWindowId(null), null);
+      assert.equal(parseKittyFocusedWindowId([{ tabs: [{ windows: [{ id: 10 }] }] }]), null);
+      assert.equal(parseKittyFocusedWindowIdFromJson("not json"), null);
     });
   });
 

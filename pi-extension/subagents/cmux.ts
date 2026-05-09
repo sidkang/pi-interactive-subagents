@@ -85,6 +85,115 @@ function kittyRemoteControlArgs(command: string, args: string[] = []): string[] 
   return remoteArgs;
 }
 
+function currentKittyWindowId(): string | undefined {
+  const windowId = process.env.KITTY_WINDOW_ID;
+  return windowId && /^\d+$/.test(windowId) ? windowId : undefined;
+}
+
+export function buildKittyLaunchArgs(
+  name: string,
+  cwd: string,
+  sourceWindowId?: string,
+  options?: { cloneSourceCwd?: boolean },
+): string[] {
+  const args: string[] = [];
+  if (sourceWindowId) {
+    args.push("--match", `window_id:${sourceWindowId}`);
+    args.push("--source-window", `id:${sourceWindowId}`);
+  }
+
+  args.push(
+    "--type=window",
+    "--dont-take-focus",
+    "--cwd",
+    options?.cloneSourceCwd ? "current" : cwd,
+    "--title",
+    name,
+  );
+
+  return args;
+}
+
+function isSshSession(): boolean {
+  return !!(process.env.SSH_CONNECTION || process.env.SSH_CLIENT || process.env.SSH_TTY);
+}
+
+function kittyJsonWindowId(value: unknown): string | null {
+  if (typeof value === "number" && Number.isInteger(value)) return String(value);
+  return nonEmptyString(value) && /^\d+$/.test(value) ? value : null;
+}
+
+function kittyFlag(value: unknown, flag: "is_active" | "is_focused"): boolean {
+  return !!value && typeof value === "object" && (value as Record<string, unknown>)[flag] === true;
+}
+
+export function parseKittyFocusedWindowId(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+
+  const focusedOsWindows = value.filter((osWindow) => kittyFlag(osWindow, "is_focused"));
+
+  for (const osWindow of focusedOsWindows.length > 0 ? focusedOsWindows : value) {
+    if (!osWindow || typeof osWindow !== "object") continue;
+    const tabs = (osWindow as { tabs?: unknown }).tabs;
+    if (!Array.isArray(tabs)) continue;
+
+    const focusedTabs = tabs.filter((tab) => kittyFlag(tab, "is_focused"));
+    const activeTabs = tabs.filter((tab) => kittyFlag(tab, "is_active"));
+
+    for (const tab of focusedTabs.length > 0 ? focusedTabs : activeTabs) {
+      const windows = (tab as { windows?: unknown }).windows;
+      if (!Array.isArray(windows)) continue;
+
+      const focusedWindow = windows.find((window) => kittyFlag(window, "is_focused"));
+      const activeWindow = windows.find((window) => kittyFlag(window, "is_active"));
+      const record = (focusedWindow ?? activeWindow) as { id?: unknown } | undefined;
+      const windowId = record ? kittyJsonWindowId(record.id) : null;
+      if (windowId) return windowId;
+    }
+  }
+
+  return null;
+}
+
+export function parseKittyFocusedWindowIdFromJson(value: string): string | null {
+  return parseKittyFocusedWindowId(parseCmuxJson(value));
+}
+
+function readKitty(args: string[]): string | null {
+  const result = spawnSync(kittyCommand(), args, { encoding: "utf8" });
+  if (result.error || result.status !== 0 || !result.stdout.trim()) return null;
+  return result.stdout;
+}
+
+function captureKittyFocusedWindowId(): string | null {
+  const info = readKitty(kittyRemoteControlArgs("ls"));
+  return info ? parseKittyFocusedWindowIdFromJson(info) : null;
+}
+
+function restoreKittyFocusIfLaunchWindowFocused(
+  snapshotWindowId: string | null,
+  childWindowId: string | null,
+  sourceWindowId?: string,
+): void {
+  if (!snapshotWindowId) return;
+
+  sleepSync(100);
+  const currentWindowId = captureKittyFocusedWindowId();
+  if (!currentWindowId || currentWindowId === snapshotWindowId) return;
+
+  if (currentWindowId !== childWindowId && currentWindowId !== sourceWindowId) return;
+
+  try {
+    execFileSync(
+      kittyCommand(),
+      kittyRemoteControlArgs("focus-window", ["--match", `id:${snapshotWindowId}`]),
+      { encoding: "utf8" },
+    );
+  } catch {
+    // Best effort: the previously focused window may have closed.
+  }
+}
+
 function isKittyRuntimeAvailable(): boolean {
   if (!process.env.KITTY_WINDOW_ID || !hasKittyCommand()) return false;
   try {
@@ -828,29 +937,32 @@ export function createSurface(name: string): string {
 }
 
 function createKittySurface(name: string): string {
-  const args: string[] = [];
-  const sourceWindowId = process.env.KITTY_WINDOW_ID;
-  if (sourceWindowId) args.push("--match", `window_id:${sourceWindowId}`);
-  args.push(
-    "--type=window",
-    "--dont-take-focus",
-    "--cwd",
-    process.cwd(),
-    "--title",
-    name,
-  );
+  const sourceWindowId = currentKittyWindowId();
+  const focusSnapshot = captureKittyFocusedWindowId();
+  let windowId: string | null = null;
 
-  const windowId = execFileSync(
-    kittyCommand(),
-    kittyRemoteControlArgs("launch", args),
-    { encoding: "utf8" },
-  ).trim();
+  try {
+    const launchArgs = buildKittyLaunchArgs(name, process.cwd(), sourceWindowId, {
+      // `current` lets Kitty clone an ssh-kitten window onto the same remote host.
+      // A literal process.cwd() is a remote path in that setup, so Kitty would
+      // otherwise create a local shell that cannot see the launch script.
+      cloneSourceCwd: isSshSession(),
+    });
 
-  if (!/^\d+$/.test(windowId)) {
-    throw new Error(`Unexpected kitty launch output: ${windowId || "(empty)"}`);
+    windowId = execFileSync(
+      kittyCommand(),
+      kittyRemoteControlArgs("launch", launchArgs),
+      { encoding: "utf8" },
+    ).trim();
+
+    if (!/^\d+$/.test(windowId)) {
+      throw new Error(`Unexpected kitty launch output: ${windowId || "(empty)"}`);
+    }
+
+    return windowId;
+  } finally {
+    restoreKittyFocusIfLaunchWindowFocused(focusSnapshot, windowId, sourceWindowId);
   }
-
-  return windowId;
 }
 
 /**

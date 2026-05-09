@@ -35,6 +35,7 @@ import {
   shellEscape,
   parseCmuxFocusedSnapshotFromJson,
   parseCmuxPaneRefForSurfaceFromJson,
+  parseKittyFocusedWindowIdFromJson,
   type MuxBackend,
 } from "../../pi-extension/subagents/cmux.ts";
 
@@ -113,6 +114,22 @@ export function restoreBackend(prev: string | undefined): void {
   else process.env.PI_SUBAGENT_MUX = prev;
 }
 
+function kittyCommand(): string {
+  try {
+    execFileSync("kitten", ["--version"], { stdio: "ignore" });
+    return "kitten";
+  } catch {
+    return "kitty";
+  }
+}
+
+function kittyRemoteControlArgs(command: string, args: string[] = []): string[] {
+  const remoteArgs = ["@"];
+  if (process.env.KITTY_LISTEN_ON) remoteArgs.push("--to", process.env.KITTY_LISTEN_ON);
+  remoteArgs.push(command, ...args);
+  return remoteArgs;
+}
+
 export function focusSurface(backend: MuxBackend, surface: string): void {
   if (backend === "cmux") {
     const pane = getSurfacePane(backend, surface);
@@ -123,6 +140,13 @@ export function focusSurface(backend: MuxBackend, surface: string): void {
 
   if (backend === "tmux") {
     execFileSync("tmux", ["select-pane", "-t", surface], { encoding: "utf8" });
+    return;
+  }
+
+  if (backend === "kitty") {
+    execFileSync(kittyCommand(), kittyRemoteControlArgs("focus-window", ["--match", `id:${surface}`]), {
+      encoding: "utf8",
+    });
     return;
   }
 
@@ -147,6 +171,17 @@ export function getFocusedSurface(backend: MuxBackend): string | null {
     }
   }
 
+  if (backend === "kitty") {
+    try {
+      const info = execFileSync(kittyCommand(), kittyRemoteControlArgs("ls"), {
+        encoding: "utf8",
+      });
+      return parseKittyFocusedWindowIdFromJson(info);
+    } catch {
+      return null;
+    }
+  }
+
   throw new Error(`Focus helpers are not implemented for ${backend}`);
 }
 
@@ -156,7 +191,7 @@ export function getSurfacePane(backend: MuxBackend, surface: string): string | n
     return parseCmuxPaneRefForSurfaceFromJson(info, surface);
   }
 
-  if (backend === "tmux") return surface;
+  if (backend === "tmux" || backend === "kitty") return surface;
 
   throw new Error(`Pane lookup is not implemented for ${backend}`);
 }
