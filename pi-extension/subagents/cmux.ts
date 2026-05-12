@@ -170,6 +170,44 @@ function captureKittyFocusedWindowId(): string | null {
   return info ? parseKittyFocusedWindowIdFromJson(info) : null;
 }
 
+function kittyWindowExists(windowId: string | null | undefined): boolean {
+  if (!windowId) return false;
+  const info = readKitty(kittyRemoteControlArgs("ls"));
+  if (!info) return false;
+  try {
+    const osWindows = parseCmuxJson(info);
+    if (!Array.isArray(osWindows)) return false;
+    for (const osWindow of osWindows) {
+      if (!osWindow || typeof osWindow !== "object") continue;
+      const tabs = (osWindow as { tabs?: unknown }).tabs;
+      if (!Array.isArray(tabs)) continue;
+      for (const tab of tabs) {
+        if (!tab || typeof tab !== "object") continue;
+        const windows = (tab as { windows?: unknown }).windows;
+        if (!Array.isArray(windows)) continue;
+        if (windows.some((window) => {
+          if (!window || typeof window !== "object") return false;
+          return kittyJsonWindowId((window as { id?: unknown }).id) === windowId;
+        })) return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function waitForKittyWindow(windowId: string, timeoutMs = 2000): void {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (kittyWindowExists(windowId)) return;
+    sleepSync(50);
+  }
+  if (!kittyWindowExists(windowId)) {
+    throw new Error(`Kitty window ${windowId} was not observable after launch`);
+  }
+}
+
 function restoreKittyFocusIfLaunchWindowFocused(
   snapshotWindowId: string | null,
   childWindowId: string | null,
@@ -959,6 +997,7 @@ function createKittySurface(name: string): string {
       throw new Error(`Unexpected kitty launch output: ${windowId || "(empty)"}`);
     }
 
+    waitForKittyWindow(windowId);
     return windowId;
   } finally {
     restoreKittyFocusIfLaunchWindowFocused(focusSnapshot, windowId, sourceWindowId);
@@ -1247,6 +1286,7 @@ export function sendCommand(surface: string, command: string): void {
   }
 
   if (backend === "kitty") {
+    waitForKittyWindow(surface);
     execFileSync(kittyCommand(), kittyRemoteControlArgs("send-text", ["--match", `id:${surface}`, "--stdin"]), {
       encoding: "utf8",
       input: command + "\n",
@@ -1525,6 +1565,7 @@ export async function pollForExit(
     sessionFile?: string;
     sentinelFile?: string;
     onTick?: (elapsed: number) => void;
+    isComplete?: () => PollResult | null;
   },
 ): Promise<PollResult> {
   const start = Date.now();
@@ -1545,6 +1586,9 @@ export async function pollForExit(
         }
       } catch {}
     }
+
+    const completed = options.isComplete?.();
+    if (completed) return completed;
 
     // Check launch/plugin sentinel file. Pi launch scripts write an exit code;
     // Claude hooks may write summary text, which maps to success here.

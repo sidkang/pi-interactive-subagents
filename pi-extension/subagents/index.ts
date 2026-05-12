@@ -714,6 +714,10 @@ function activityLabel(activity: SubagentActivityState): string | undefined {
   return activity.activeScope;
 }
 
+function isCompletedPiActivity(activity: SubagentActivityState | undefined): boolean {
+  return activity?.phase === "done";
+}
+
 function observeRunningSubagent(running: RunningSubagent, observedAt = Date.now()) {
   if (running.cli === "claude") return;
 
@@ -905,6 +909,7 @@ export const __test__ = {
   buildPiPromptArgs,
   formatWidgetRightLabel,
   observeRunningSubagent,
+  isCompletedPiActivity,
   resolveDenyTools,
   resolveInterruptTarget,
   requestSubagentInterrupt,
@@ -1258,6 +1263,10 @@ async function watchSubagent(
       sentinelFile: running.sentinelFile,
       onTick() {
         observeRunningSubagent(running);
+      },
+      isComplete() {
+        observeRunningSubagent(running);
+        return isCompletedPiActivity(running.activity) ? { reason: "done", exitCode: 0 } : null;
       },
     });
 
