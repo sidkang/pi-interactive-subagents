@@ -1367,8 +1367,10 @@ describe("tool registration", () => {
   it("treats done activity snapshots as completion signals", () => {
     const testApi = (subagentsModule as any).__test__;
 
-    assert.equal(testApi.isCompletedPiActivity({ phase: "done" }), true);
-    assert.equal(testApi.isCompletedPiActivity({ phase: "waiting" }), false);
+    assert.equal(testApi.isCompletedPiActivity({ phase: "done", latestEvent: "agent_end" }), true);
+    assert.equal(testApi.isCompletedPiActivity({ phase: "done", latestEvent: "subagent_done" }), true);
+    assert.equal(testApi.isCompletedPiActivity({ phase: "done", latestEvent: "caller_ping" }), false);
+    assert.equal(testApi.isCompletedPiActivity({ phase: "waiting", latestEvent: "agent_end" }), false);
     assert.equal(testApi.isCompletedPiActivity(undefined), false);
   });
 

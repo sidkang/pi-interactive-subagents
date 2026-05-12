@@ -98,6 +98,8 @@ export function buildKittyLaunchArgs(
 ): string[] {
   const args: string[] = [];
   if (sourceWindowId) {
+    // launch --match is tab-scoped in Kitty. window_id selects the tab that
+    // contains the pi process's own window, not whichever tab is focused.
     args.push("--match", `window_id:${sourceWindowId}`);
     args.push("--source-window", `id:${sourceWindowId}`);
   }

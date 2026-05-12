@@ -715,7 +715,10 @@ function activityLabel(activity: SubagentActivityState): string | undefined {
 }
 
 function isCompletedPiActivity(activity: SubagentActivityState | undefined): boolean {
-  return activity?.phase === "done";
+  if (activity?.phase !== "done") return false;
+  // caller_ping completion must be driven by the .exit sidecar so the parent
+  // receives the ping payload instead of misclassifying it as ordinary done.
+  return activity.latestEvent !== "caller_ping";
 }
 
 function observeRunningSubagent(running: RunningSubagent, observedAt = Date.now()) {
