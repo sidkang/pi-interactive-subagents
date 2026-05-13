@@ -100,8 +100,10 @@ export function buildKittyLaunchArgs(
   if (sourceWindowId) {
     // launch --match is tab-scoped in Kitty. window_id selects the tab that
     // contains the pi process's own window, not whichever tab is focused.
+    // --source-window copies cwd/env context; --next-to is the placement hint.
     args.push("--match", `window_id:${sourceWindowId}`);
     args.push("--source-window", `id:${sourceWindowId}`);
+    args.push("--next-to", `id:${sourceWindowId}`);
   }
 
   args.push(
