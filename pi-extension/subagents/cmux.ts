@@ -106,6 +106,7 @@ export function buildKittyLaunchArgs(
 
   args.push(
     "--type=window",
+    "--location=neighbor",
     "--dont-take-focus",
     "--cwd",
     options?.cloneSourceCwd ? "current" : cwd,
@@ -172,13 +173,13 @@ function captureKittyFocusedWindowId(): string | null {
   return info ? parseKittyFocusedWindowIdFromJson(info) : null;
 }
 
-function kittyWindowExists(windowId: string | null | undefined): boolean {
-  if (!windowId) return false;
+function kittyWindowOsWindowId(windowId: string | null | undefined): string | null {
+  if (!windowId) return null;
   const info = readKitty(kittyRemoteControlArgs("ls"));
-  if (!info) return false;
+  if (!info) return null;
   try {
     const osWindows = parseCmuxJson(info);
-    if (!Array.isArray(osWindows)) return false;
+    if (!Array.isArray(osWindows)) return null;
     for (const osWindow of osWindows) {
       if (!osWindow || typeof osWindow !== "object") continue;
       const tabs = (osWindow as { tabs?: unknown }).tabs;
@@ -190,13 +191,17 @@ function kittyWindowExists(windowId: string | null | undefined): boolean {
         if (windows.some((window) => {
           if (!window || typeof window !== "object") return false;
           return kittyJsonWindowId((window as { id?: unknown }).id) === windowId;
-        })) return true;
+        })) return kittyJsonWindowId((osWindow as { id?: unknown }).id);
       }
     }
   } catch {
-    return false;
+    return null;
   }
-  return false;
+  return null;
+}
+
+function kittyWindowExists(windowId: string | null | undefined): boolean {
+  return kittyWindowOsWindowId(windowId) !== null;
 }
 
 function waitForKittyWindow(windowId: string, timeoutMs = 2000): void {
@@ -976,8 +981,22 @@ export function createSurface(name: string): string {
   return createSurfaceSplit(name, "right", fromSurface);
 }
 
+function closeKittyWindow(windowId: string): void {
+  try {
+    execFileSync(
+      kittyCommand(),
+      kittyRemoteControlArgs("close-window", ["--match", `id:${windowId}`, "--ignore-no-match"]),
+      { encoding: "utf8" },
+    );
+  } catch {
+    // Optional — the window may have already closed.
+  }
+}
+
 function createKittySurface(name: string): string {
-  const sourceWindowId = currentKittyWindowId();
+  const envSourceWindowId = currentKittyWindowId();
+  const sourceOsWindowId = kittyWindowOsWindowId(envSourceWindowId);
+  const sourceWindowId = sourceOsWindowId ? envSourceWindowId : undefined;
   const focusSnapshot = captureKittyFocusedWindowId();
   let windowId: string | null = null;
 
@@ -1000,6 +1019,15 @@ function createKittySurface(name: string): string {
     }
 
     waitForKittyWindow(windowId);
+
+    const childOsWindowId = kittyWindowOsWindowId(windowId);
+    if (sourceOsWindowId && childOsWindowId && childOsWindowId !== sourceOsWindowId) {
+      closeKittyWindow(windowId);
+      throw new Error(
+        `Kitty launched subagent window ${windowId} in OS window ${childOsWindowId}, expected ${sourceOsWindowId}`,
+      );
+    }
+
     return windowId;
   } finally {
     restoreKittyFocusIfLaunchWindowFocused(focusSnapshot, windowId, sourceWindowId);
@@ -1503,15 +1531,7 @@ export function closeSurface(surface: string): void {
   }
 
   if (backend === "kitty") {
-    try {
-      execFileSync(
-        kittyCommand(),
-        kittyRemoteControlArgs("close-window", ["--match", `id:${surface}`, "--ignore-no-match"]),
-        { encoding: "utf8" },
-      );
-    } catch {
-      // Optional — the window may have already closed.
-    }
+    closeKittyWindow(surface);
     return;
   }
 

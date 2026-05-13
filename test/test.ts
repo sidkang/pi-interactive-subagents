@@ -2398,6 +2398,7 @@ describe("cmux.ts", () => {
         "--source-window",
         "id:50",
         "--type=window",
+        "--location=neighbor",
         "--dont-take-focus",
         "--cwd",
         "current",
@@ -2413,6 +2414,7 @@ describe("cmux.ts", () => {
         "--source-window",
         "id:50",
         "--type=window",
+        "--location=neighbor",
         "--dont-take-focus",
         "--cwd",
         "/local/project",
@@ -2424,6 +2426,7 @@ describe("cmux.ts", () => {
     it("falls back to a literal cwd when no source window is known", () => {
       assert.deepEqual(buildKittyLaunchArgs("worker", "/local/project"), [
         "--type=window",
+        "--location=neighbor",
         "--dont-take-focus",
         "--cwd",
         "/local/project",
