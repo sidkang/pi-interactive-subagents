@@ -200,14 +200,6 @@ export default function (pi: ExtensionAPI) {
       }
 
       recorder.agentEndDone();
-      const sessionFile = process.env.PI_SUBAGENT_SESSION;
-      if (sessionFile) {
-        try {
-          writeFileSync(`${sessionFile}.exit`, JSON.stringify({ type: "done" }));
-        } catch {
-          // Best-effort parent notification; shutdown still proceeds.
-        }
-      }
       ctx.shutdown();
       return;
     }
