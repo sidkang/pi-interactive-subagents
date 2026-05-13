@@ -1,15 +1,5 @@
 {
-  "packages": [
-    {
-      "source": "git:github.com/sidkang/pi-interactive-subagents",
-      "extensions": [],
-      "skills": []
-    }
-  ],
-  "extensions": [
-    "../pi-extension/subagents/index.ts"
-  ],
-  "skills": [
-    "./skills/run-integration-tests/SKILL.md"
-  ]
+  "packages": [],
+  "extensions": [],
+  "skills": ["./skills/run-integration-tests/SKILL.md"]
 }
